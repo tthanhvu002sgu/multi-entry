@@ -194,7 +194,7 @@ $('sl-down').onclick = () => changeStop('down');
 $('stop').addEventListener('keydown', event => { if (['ArrowUp','ArrowDown'].includes(event.key)) { event.preventDefault(); changeStop(event.key === 'ArrowUp' ? 'up' : 'down'); } });
 for (const [id, delta] of [['minus',-1],['plus',1]]) $(id).onclick = () => { $('count').value = Math.max(1,Math.min(50,Number($('count').value) + delta)); invalidate(); };
 $('use-quote').onclick = async () => { invalidate(); swingEnabled=false; queuedSwing=false; try { if (await loadContext()) { $('entry').value = (form.elements.side.value === 'buy' ? context.symbol.ask : context.symbol.bid).toFixed(context.symbol.digits); stopMeta.sl_mode = 'adjusted'; stopControls(); } } catch(error) { message(error.message); } };
-$('login-form').onsubmit = async event => { event.preventDefault(); message(''); try { await api('/api/login', {method:'POST',body:JSON.stringify({password:$('password').value})}); $('password').value=''; await initialize(); } catch(error) { message(error.message); } };
+$('login-form').onsubmit = async event => { event.preventDefault(); message(''); try { await api('/api/login', {method:'POST',body:JSON.stringify({password:$('password').value,remember:$('remember')?$('remember').checked:false})}); $('password').value=''; await initialize(); } catch(error) { message(error.message); } };
 $('logout').onclick = async () => { await api('/api/logout',{method:'POST'}); window.location.reload(); };
 $('refresh-plans').onclick = () => loadPlans().catch(error => message(error.message));
 $('save').onclick = async () => {
