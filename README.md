@@ -57,6 +57,25 @@ COOKIE_SECURE=false
 
 Ứng dụng chỉ hỗ trợ `SYMBOL_CALC_MODE_FOREX` (0) và `FOREX_NO_LEVERAGE` (5). Vàng, chỉ số, futures và các CFD dùng cách tính khác không thuộc phiên bản này. Không tự suy đoán thông số từ tên symbol.
 
+## Chế độ trực tuyến (Online Broker — không cần MT5)
+
+Dành cho việc deploy ứng dụng lên Internet, Linux VPS, Docker hoặc các dịch vụ đám mây (Render, Railway, Fly.io...) mà **không cần cài đặt MetaTrader 5** hay hệ điều hành Windows:
+
+Sửa `.env`:
+```dotenv
+APP_MODE=online
+HOST=0.0.0.0
+PORT=8871
+APP_PASSWORD=mat-khau-bao-ve-it-nhat-12-ky-tu
+ACCOUNT_EQUITY=10000
+ACCOUNT_CURRENCY=USD
+```
+
+- **Giá & Nến swing**: Lấy trực tiếp từ Yahoo Finance API (thông qua `httpx`), hỗ trợ đầy đủ 28 cặp Forex chính và chéo (EURUSD, USDJPY, GBPUSD, EURGBP, v.v.).
+- **Nến swing**: Lấy 300 nến đã đóng gần nhất cho các timeframe `M1`, `M5`, `M15`, `M30`, `H1`, `H4`, `D1` để xác định pivot 2–2.
+- **Tính toán P/L & Lot**: Tự động tính toán P/L chuẩn Forex theo công thức toán học (hỗ trợ trực tiếp các cặp Direct, Indirect và Cross rate quy đổi về USD).
+- Không yêu cầu cài đặt phần mềm MT5 hay các biến `MT5_PATH`, `MT5_LOGIN`, `MT5_SERVER`.
+
 ## Truy cập từ điện thoại / PC khác
 
 **Khuyến nghị:** giữ Python bind `127.0.0.1`, đặt reverse proxy HTTPS hoặc tunnel HTTPS có xác thực phía trước trên VPS. Proxy phải giữ nguyên Host và không cache `/api/`. Đặt `COOKIE_SECURE=true` khi truy cập bằng HTTPS, vẫn giữ APP_PASSWORD. Proxy đi vào `127.0.0.1:8871`.

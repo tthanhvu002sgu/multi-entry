@@ -16,20 +16,25 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .broker import BrokerUnavailable, DemoBroker, MT5Broker
+from .broker import BrokerUnavailable, DemoBroker, MT5Broker, OnlineBroker
 from .engine import Plan, calculate
 from .stops import SwingRequest, StepRequest, find_swing, step_stop
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 MODE = os.getenv("APP_MODE", "demo")
-if MODE not in ("demo", "mt5"):
-    raise RuntimeError("APP_MODE must be demo or mt5")
+if MODE not in ("demo", "mt5", "online"):
+    raise RuntimeError("APP_MODE must be demo, mt5, or online")
 PASSWORD = os.getenv("APP_PASSWORD", "")
 if (MODE == "mt5" or os.getenv("HOST", "127.0.0.1") not in ("127.0.0.1", "localhost", "::1")) and len(PASSWORD) < 12:
     raise RuntimeError("Set APP_PASSWORD with at least 12 characters before MT5 or remote access.")
 SECRET = secrets.token_bytes(32)
-broker = DemoBroker() if MODE == "demo" else MT5Broker()
+if MODE == "demo":
+    broker = DemoBroker()
+elif MODE == "mt5":
+    broker = MT5Broker()
+else:
+    broker = OnlineBroker()
 app = FastAPI(title="Multi Entry", docs_url=None, redoc_url=None, openapi_url=None)
 attempts = defaultdict(list)
 auth_lock = Lock()

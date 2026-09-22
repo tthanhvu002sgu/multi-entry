@@ -116,3 +116,190 @@ class MT5Broker:
         current = self.connect()
         if str(current.login) != account["login"] or current.server != account["server"] or current.currency != account["currency"]:
             raise BrokerUnavailable("Tài khoản thay đổi trong lúc tính. Hãy tải lại.")
+
+
+class OnlineBroker:
+    mode = "online"
+
+    SUPPORTED_SYMBOLS = [
+        "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD",
+        "CADCHF", "CADJPY", "CHFJPY",
+        "EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD",
+        "GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD",
+        "NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD",
+        "USDCAD", "USDCHF", "USDJPY",
+    ]
+
+    TF_MAP = {
+        "M1": ("1m", "5d"),
+        "M5": ("5m", "10d"),
+        "M15": ("15m", "15d"),
+        "M30": ("30m", "30d"),
+        "H1": ("1h", "60d"),
+        "H4": ("4h", "90d"),
+        "D1": ("1d", "2y"),
+    }
+
+    def __init__(self):
+        self.lock = RLock()
+        self._cache = {}
+        self._http = None
+
+    def _client(self):
+        if self._http is None or self._http.is_closed:
+            import httpx
+            self._http = httpx.Client(
+                timeout=10.0,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+        return self._http
+
+    def symbols(self):
+        return sorted(self.SUPPORTED_SYMBOLS)
+
+    def _fetch_quote(self, symbol):
+        now = time.time()
+        cached = self._cache.get(symbol)
+        if cached and now - cached[0] < 5:
+            return cached[1], cached[2]
+
+        ticker = f"{symbol}=X"
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
+        try:
+            client = self._client()
+            resp = client.get(url)
+            if resp.status_code != 200:
+                raise BrokerUnavailable(f"Yahoo Finance trả về mã lỗi {resp.status_code} cho {symbol}.")
+            data = resp.json()
+            result = data.get("chart", {}).get("result")
+            if not result:
+                raise BrokerUnavailable(f"Không có dữ liệu giá từ Yahoo Finance cho {symbol}.")
+            meta = result[0].get("meta", {})
+            price = meta.get("regularMarketPrice")
+            quote_time = meta.get("regularMarketTime") or int(now)
+            if price is None or not math.isfinite(price) or price <= 0:
+                indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
+                closes = [c for c in indicators.get("close", []) if c is not None and math.isfinite(c) and c > 0]
+                if closes:
+                    price = closes[-1]
+                else:
+                    raise BrokerUnavailable(f"Không đọc được giá hợp lệ của {symbol}.")
+            self._cache[symbol] = (now, float(price), int(quote_time))
+            return float(price), int(quote_time)
+        except BrokerUnavailable:
+            raise
+        except Exception as exc:
+            raise BrokerUnavailable(f"Lỗi kết nối khi lấy giá {symbol}: {str(exc)}") from exc
+
+    def context(self, symbol):
+        if symbol not in self.SUPPORTED_SYMBOLS:
+            raise ValueError(f"Symbol {symbol} không được hỗ trợ trong chế độ trực tuyến.")
+        price, quote_time = self._fetch_quote(symbol)
+        jpy = "JPY" in symbol
+        tick_size = 0.001 if jpy else 0.00001
+        digits = 3 if jpy else 5
+        half_spread = tick_size
+        bid = round(price - half_spread, digits)
+        ask = round(price + half_spread, digits)
+
+        currency = os.getenv("ACCOUNT_CURRENCY", "USD")
+        try:
+            equity = float(os.getenv("ACCOUNT_EQUITY", "10000"))
+        except ValueError:
+            equity = 10000.0
+
+        warnings = []
+        if currency != "USD":
+            warnings.append(f"Tài khoản dùng {currency}. Mọi số tiền theo đơn vị này.")
+
+        return {
+            "mode": "online",
+            "account": {
+                "login": "ONLINE",
+                "server": "Yahoo Finance (Live Feed)",
+                "currency": currency,
+                "equity": equity,
+                "balance": equity,
+            },
+            "symbol": {
+                "name": symbol,
+                "bid": bid,
+                "ask": ask,
+                "tick_size": tick_size,
+                "digits": digits,
+                "contract_size": 100000,
+                "volume_min": 0.01,
+                "volume_step": 0.01,
+                "volume_max": 100.0,
+            },
+            "quote_time": quote_time,
+            "warnings": warnings,
+        }
+
+    def _get_rate(self, pair):
+        try:
+            p, _ = self._fetch_quote(pair)
+            return p
+        except Exception:
+            fallbacks = {
+                "USDJPY": 150.0, "USDCHF": 0.88, "USDCAD": 1.38,
+                "GBPUSD": 1.25, "EURUSD": 1.10, "AUDUSD": 0.65, "NZDUSD": 0.60
+            }
+            return fallbacks.get(pair, 1.0)
+
+    def profit(self, symbol, side, volume, entry, stop):
+        pnl_quote = (stop - entry) * 100000 * volume * (1 if side == "buy" else -1)
+        base, quote = symbol[:3], symbol[3:]
+        if quote == "USD":
+            return pnl_quote
+        if base == "USD":
+            return pnl_quote / stop
+        if quote in ("JPY", "CHF", "CAD"):
+            rate = self._get_rate("USD" + quote)
+            return pnl_quote / rate
+        elif quote in ("GBP", "EUR", "AUD", "NZD"):
+            rate = self._get_rate(quote + "USD")
+            return pnl_quote * rate
+        return pnl_quote
+
+    def bars(self, symbol, timeframe, count):
+        if timeframe not in self.TF_MAP:
+            raise ValueError(f"Khung thời gian {timeframe} không hợp lệ.")
+        interval, range_str = self.TF_MAP[timeframe]
+        ticker = f"{symbol}=X"
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval={interval}&range={range_str}"
+        try:
+            client = self._client()
+            resp = client.get(url)
+            if resp.status_code != 200:
+                raise BrokerUnavailable(f"Yahoo Finance trả về mã {resp.status_code} khi tải nến {symbol}.")
+            data = resp.json()
+            result = data.get("chart", {}).get("result")
+            if not result:
+                raise BrokerUnavailable(f"Không có dữ liệu nến cho {symbol}.")
+            res = result[0]
+            timestamps = res.get("timestamp") or []
+            quote = (res.get("indicators") or {}).get("quote", [{}])[0]
+            highs = quote.get("high") or []
+            lows = quote.get("low") or []
+
+            valid_bars = []
+            for t, h, l in zip(timestamps, highs, lows):
+                if h is not None and l is not None and math.isfinite(h) and math.isfinite(l) and h >= l > 0:
+                    valid_bars.append({"time": int(t), "high": float(h), "low": float(l)})
+
+            if len(valid_bars) > 1:
+                valid_bars = valid_bars[:-1]
+
+            if len(valid_bars) < 5:
+                raise BrokerUnavailable("Không đủ nến lịch sử từ Yahoo Finance. Thử lại sau.")
+
+            return valid_bars[-count:]
+        except BrokerUnavailable:
+            raise
+        except Exception as exc:
+            raise BrokerUnavailable(f"Lỗi kết nối khi tải nến {symbol}: {str(exc)}") from exc
+
+    def verify_account(self, account):
+        pass
+

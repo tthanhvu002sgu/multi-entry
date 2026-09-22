@@ -54,3 +54,15 @@ def test_swing_and_step_endpoints(server):
     assert result.status_code==200
     assert result.json()['stop']==149.01
     assert server.post('/api/swing',json=body|{'timeframe':'BAD'}).status_code==422
+
+
+def test_online_api_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv('APP_MODE', 'online')
+    monkeypatch.setenv('APP_PASSWORD', 'test-password-123')
+    monkeypatch.setenv('DATA_DIR', str(tmp_path))
+    from app import main
+    importlib.reload(main)
+    client = TestClient(main.app)
+    assert main.broker.mode == 'online'
+    sess = client.get('/api/session').json()
+    assert sess['mode'] == 'online'

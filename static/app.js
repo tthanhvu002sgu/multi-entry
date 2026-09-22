@@ -70,8 +70,8 @@ async function loadContext() {
   context = next;
   const a = context.account, s = context.symbol;
   $('account').textContent = `${fmt(a.equity)} ${a.currency}`;
-  $('account-meta').textContent = `${a.server} · #${a.login}`;
-  $('connection').textContent = context.mode === 'demo' ? '● MÔ PHỎNG' : '● MT5 đã kết nối';
+  $('account-meta').textContent = context.mode === 'online' ? `${a.server}` : `${a.server} · #${a.login}`;
+  $('connection').textContent = context.mode === 'demo' ? '● MÔ PHỎNG' : (context.mode === 'online' ? '● TRỰC TUYẾN (LIVE)' : '● MT5 đã kết nối');
   $('notice').textContent = context.warnings.join(' '); $('notice').hidden = !context.warnings.length;
   document.querySelectorAll('.currency').forEach(el => el.textContent = a.currency);
   $('specs').textContent = `Min ${s.volume_min} · Bước ${s.volume_step} · Max ${s.volume_max} lot\nContract ${s.contract_size.toLocaleString('en-US')}`;
