@@ -4,6 +4,7 @@ Web lập kế hoạch DCA forex dùng trên điện thoại và PC. Python tín
 
 ## Hiện trạng
 
+- Quản lý danh sách ticker (Watchlist): Chỉ hiển thị các ticker do người dùng thêm vào danh sách thay vì hiển thị toàn bộ hàng chục ticker từ broker/MT5. Module quản lý ticker cho phép tìm kiếm/lọc real-time, thêm ticker mới từ sàn, xóa ticker bằng badge chip (nút ×), và chuyển nhanh cặp tiền qua hàng pill button. Danh sách ticker được đồng bộ và lưu trữ bền vững trong SQLite (`user_symbols`), tự động kích hoạt khi mở kế hoạch đã lưu.
 - SL theo swing low (Buy) / swing high (Sell), chọn M1/M5/M15/M30/H1/H4/D1. Nhấn **Lấy SL theo swing** để bật; sau đó đổi timeframe/chiều/cặp sẽ lấy swing mới. Khi sửa entry hoặc SL, chuyển sang giữ SL cố định; nút lấy swing bật lại tính tự động.
 - Swing: pivot nghiêm ngặt 2 nến trái + 2 nến phải đã đóng; bỏ nến đang chạy, tìm gần nhất theo thời gian và đúng phía entry trong tối đa 300 nến. Đỉnh/đáy bằng nhau không được coi là pivot. Không dự đoán swing hoặc đánh giá cấu trúc thị trường; chưa lọc pivot từng bị phá trong quá khứ.
 - Nút ▲/▼ và phím ArrowUp/ArrowDown tại ô SL dùng **trade_tick_size** thực tế, không suy ra từ tên symbol, pip hoặc digits. Chọn 1/10/100 ticks; giao diện hiện bước bằng giá. Tick giống nhau thì bước giống nhau, không ép mỗi ticker khác nhau. Giá nhập lệch grid được đưa đến grid kế tiếp theo hướng bấm; không được vượt entry hoặc xuống giá không dương.
@@ -139,6 +140,20 @@ Trước khi vận hành thật: đối chiếu P/L từng entry với `order_ca
 - https://www.mql5.com/en/docs/python_metatrader5/mt5initialize_py
 
 ## Nhật ký
+
+- 2026-09-25: thêm tính năng tự động tính toán lại kế hoạch (auto-calculate / live update):
+  - Tự động tính toán lại kế hoạch DCA ngay khi người dùng thay đổi giá entry đầu, giá stop loss, lot mỗi entry, ngân sách chịu lỗ, tổng số entry (+/-), commission hoặc dự phòng mà không cần phải bấm nút "Tính kế hoạch →".
+  - Tích hợp cơ chế debounce 250ms khi gõ phím nhằm tránh spam request; tính toán tức thì (0ms) khi bấm nút tăng/giảm entry (+/-), chuyển chế độ ngân sách / lot cố định, hoặc bấm "Dùng giá hiện tại".
+  - Tự động kiểm tra điều kiện hợp lệ (Buy: SL < Entry, Sell: SL > Entry, số dương, biên lot) trước khi gửi request tự động, tránh hiện popup lỗi trình duyệt trong khi người dùng đang nhập dở dang.
+  - Toàn bộ 51 tests tự động đều đạt.
+
+- 2026-09-25: thêm module quản lý ticker (Watchlist) và bộ lọc gọn danh sách cặp tiền:
+  - Chỉ hiển thị các ticker người dùng đã thêm vào giao diện chính (`#symbol`) và thanh chọn nhanh (`#quick-tickers`), tránh tràn ngập danh sách dài từ MT5/Online broker.
+  - Thêm modal quản lý ticker: tìm kiếm lọc ticker theo từ khóa trong thời gian thực, thêm từ danh sách sàn, xóa ticker bằng badge chip (nút ×).
+  - Tự động chuyển đổi ticker hợp lệ khi xóa ticker đang chọn; tự động thêm ticker vào danh sách người dùng khi mở kế hoạch cũ có symbol chưa có trong watchlist.
+  - Lưu danh sách ticker và cờ khởi tạo vào SQLite (`user_symbols` & `app_config`) đồng bộ xuyên thiết bị (PC & điện thoại).
+  - Thêm API `POST /api/symbols` (thêm ticker, kiểm tra sàn), `DELETE /api/symbols/{symbol}` (xóa ticker), mở rộng `GET /api/symbols` trả cả `symbols` (active) và `all_symbols` (tất cả ticker broker).
+  - 51 tests tự động đều qua trong `.venv` Python 3.12/Windows; kiểm thử trọn vẹn luồng thêm/xóa/lỗi/bảo mật và persistence qua khởi động lại server.
 
 - 2026-09-20: thêm SL swing 2–2 theo timeframe, nến đóng lấy bằng `copy_rates_from_pos(..., 1, 300)`, đệm ticks, nút ▲/▼ theo tick size và multiplier 1/10/100. Chỉnh tay giữ SL, tự tính lại rủi ro, lưu nguồn swing; bảo vệ phản hồi cũ khi đổi input trong lúc request chạy. Thêm USDJPY demo để kiểm tra bước giá khác nhau. 37 tests qua; Edge kiểm tra auto Buy/Sell, đổi symbol/timeframe, override, bước EURUSD/JPY, lưu/mở, và không tràn ngang 360/390/768/1440px. Chưa kiểm tra dữ liệu swing trên VPS MT5 thật.
 

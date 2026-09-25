@@ -10,7 +10,7 @@
 <div id="workspace" class="workspace" hidden>
 <section class="panel setup"><div class="panel-title"><h2><span class="step">01</span> Thiết lập kế hoạch</h2><span class="muted">Lot bằng nhau</span></div>
 <form id="plan-form">
-<div class="field-row"><label>Cặp tiền<select id="symbol" name="symbol" required></select></label><fieldset><legend>Chiều lệnh</legend><div class="segmented"><label><input type="radio" name="side" value="buy" checked><span>↗ Buy</span></label><label><input type="radio" name="side" value="sell"><span>↘ Sell</span></label></div></fieldset></div>
+<div class="field-row"><div class="symbol-col"><div class="symbol-header-row"><label for="symbol">Cặp tiền</label><button type="button" id="btn-open-ticker-modal" class="text-button" title="Quản lý danh sách ticker">+ Quản lý ticker</button></div><select id="symbol" name="symbol" required></select><div id="quick-tickers" class="quick-tickers"></div></div><fieldset><legend>Chiều lệnh</legend><div class="segmented"><label><input type="radio" name="side" value="buy" checked><span>↗ Buy</span></label><label><input type="radio" name="side" value="sell"><span>↘ Sell</span></label></div></fieldset></div>
 <div class="field-row"><label>Giá entry đầu<input name="entry" id="entry" type="number" step="any" min="0.00000001" value="1.10000" required></label><div><label for="stop">Giá stop loss</label><div class="stop-control"><input name="stop" id="stop" type="number" step="any" min="0.00000001" value="1.09000" required><div><button type="button" id="sl-up" aria-label="Tăng giá SL">▲</button><button type="button" id="sl-down" aria-label="Giảm giá SL">▼</button></div></div></div></div>
 <div class="quote-line"><span id="quote">—</span><button type="button" id="use-quote" class="text-button">Dùng giá hiện tại ↗</button></div>
 <div class="swing-settings"><div class="field-row"><label>Timeframe swing<select id="timeframe" name="timeframe"><option>M1</option><option>M5</option><option selected>M15</option><option>M30</option><option>H1</option><option>H4</option><option>D1</option></select></label><label>Bước chỉnh SL<select id="step-ticks" name="step_ticks"><option value="1">1 tick</option><option value="10">10 ticks</option><option value="100">100 ticks</option></select></label></div><div class="field-row"><label>Đệm ngoài swing (ticks)<input id="buffer-ticks" name="buffer_ticks" type="number" min="0" max="10000" step="1" value="0"></label><button type="button" id="get-swing" class="secondary">Lấy SL theo swing ↗</button></div><p id="step-hint" class="helper">Bước chỉnh lấy từ thông số broker.</p><p id="sl-source" class="helper" aria-live="polite">SL nhập tay · được giữ cố định.</p><p class="helper">Swing 2–2, chỉ nến đã đóng. Chọn timeframe rồi lấy swing; chỉnh tay sẽ giữ SL đến khi bạn lấy swing mới.</p></div>
@@ -28,4 +28,22 @@
 </div>
 <section id="saved-panel" class="panel saved-panel" hidden><div class="panel-title"><h2>Kế hoạch đã lưu</h2><button id="refresh-plans" class="text-button">Làm mới ↻</button></div><p class="helper">Lưu trên VPS để mở lại từ điện thoại hoặc PC. Kết quả luôn được tính lại với dữ liệu mới.</p><div id="saved-list"></div></section>
 <footer><span>MULTI ENTRY / RISK PLANNER</span><span>Lập kế hoạch · Tính toán · Giữ kỷ luật</span></footer>
+<div id="ticker-modal" class="modal-overlay" hidden>
+<div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-ticker-title">
+<div class="modal-header"><h2 id="modal-ticker-title">Quản lý danh sách ticker</h2><button type="button" id="btn-close-ticker-modal" class="modal-close" aria-label="Đóng">✕</button></div>
+<p class="helper">Chỉ những ticker được thêm vào đây mới xuất hiện ở danh sách chọn chính, giúp giao diện gọn gàng và không bị rối.</p>
+<div class="add-ticker-section">
+<label for="add-ticker-search">Thêm ticker vào danh sách</label>
+<div class="add-ticker-search"><input type="text" id="add-ticker-search" placeholder="Gõ để lọc (ví dụ: EUR, JPY, CAD)..." autocomplete="off"></div>
+<div class="add-ticker-row"><select id="add-ticker-select" aria-label="Chọn ticker để thêm"></select><button type="button" id="btn-add-ticker" class="secondary">+ Thêm</button></div>
+<p id="add-ticker-msg" class="helper" hidden></p>
+</div>
+<div class="active-tickers-section">
+<div class="active-tickers-header"><label>Ticker đang hiển thị (<span id="active-tickers-count">0</span>)</label></div>
+<div id="active-tickers-chips" class="active-chips-wrap"></div>
+<p id="no-active-tickers-msg" class="helper" hidden>Chưa có ticker nào được chọn. Hãy thêm ticker ở trên.</p>
+</div>
+<div class="modal-footer"><button type="button" id="btn-done-ticker-modal" class="primary modal-done">Hoàn tất</button></div>
+</div>
+</div>
 </main></body></html>

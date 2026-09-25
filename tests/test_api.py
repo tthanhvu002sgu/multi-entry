@@ -174,3 +174,50 @@ def test_persistent_secret_across_server_restarts(tmp_path, monkeypatch):
     assert restarted_client.get('/api/session').json()['authenticated'] is True
     assert restarted_client.get('/api/symbols').status_code == 200
 
+
+def test_user_symbols_add_remove_and_persistence(tmp_path, monkeypatch):
+    monkeypatch.setenv('APP_MODE', 'demo')
+    monkeypatch.setenv('APP_PASSWORD', 'test-password-123')
+    monkeypatch.setenv('DATA_DIR', str(tmp_path))
+    from app import main
+    importlib.reload(main)
+    client = TestClient(main.app)
+
+    # Unauthorized calls
+    assert client.get('/api/symbols').status_code == 401
+    assert client.post('/api/symbols', json={'symbol': 'USDJPY'}).status_code == 401
+    assert client.delete('/api/symbols/USDJPY').status_code == 401
+
+    # Login
+    client.post('/api/login', json={'password': 'test-password-123'})
+
+    # Initial symbols: seed defaults from available
+    res = client.get('/api/symbols').json()
+    assert 'symbols' in res and 'all_symbols' in res
+    assert 'EURUSD' in res['symbols']
+    assert len(res['all_symbols']) == 5
+
+    # Invalid symbol addition
+    bad_add = client.post('/api/symbols', json={'symbol': 'NONEXISTENT'})
+    assert bad_add.status_code == 400
+    assert 'không có trong danh sách' in bad_add.json()['detail']
+
+    # Delete symbol EURUSD
+    del_res = client.delete('/api/symbols/EURUSD')
+    assert del_res.status_code == 200
+    assert 'EURUSD' not in del_res.json()['symbols']
+
+    # Add symbol NZDUSD (case-insensitive test)
+    add_res = client.post('/api/symbols', json={'symbol': 'nzdusd'})
+    assert add_res.status_code == 200
+    assert 'NZDUSD' in add_res.json()['symbols']
+
+    # Restart server with same DATA_DIR to verify persistence
+    importlib.reload(main)
+    reloaded_client = TestClient(main.app)
+    reloaded_client.post('/api/login', json={'password': 'test-password-123'})
+    persisted = reloaded_client.get('/api/symbols').json()
+    assert 'NZDUSD' in persisted['symbols']
+    assert 'EURUSD' not in persisted['symbols']
+
+

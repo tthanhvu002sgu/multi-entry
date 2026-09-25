@@ -90,9 +90,47 @@ def db():
                 "expires_at REAL NOT NULL"
                 ")"
             )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS user_symbols ("
+                "symbol TEXT PRIMARY KEY, "
+                "added_at REAL NOT NULL"
+                ")"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS app_config ("
+                "key TEXT PRIMARY KEY, "
+                "value TEXT NOT NULL"
+                ")"
+            )
             yield connection
     finally:
         connection.close()
+
+
+def get_active_symbols(conn: sqlite3.Connection, available_symbols: list[str]) -> list[str]:
+    init_row = conn.execute("SELECT value FROM app_config WHERE key = 'watchlist_initialized'").fetchone()
+    if not init_row:
+        defaults = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
+        seed = [s for s in defaults if s in available_symbols]
+        if not seed and available_symbols:
+            seed = available_symbols[:min(5, len(available_symbols))]
+        now = time.time()
+        for idx, s in enumerate(seed):
+            conn.execute("INSERT OR REPLACE INTO user_symbols (symbol, added_at) VALUES (?, ?)", (s, now + idx * 0.001))
+        conn.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('watchlist_initialized', '1')")
+
+    rows = conn.execute("SELECT symbol FROM user_symbols ORDER BY added_at ASC").fetchall()
+    active = [r[0] for r in rows if r[0] in available_symbols]
+    if len(rows) > 0 and not active and available_symbols:
+        defaults = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
+        seed = [s for s in defaults if s in available_symbols]
+        if not seed:
+            seed = available_symbols[:min(5, len(available_symbols))]
+        now = time.time()
+        for idx, s in enumerate(seed):
+            conn.execute("INSERT OR REPLACE INTO user_symbols (symbol, added_at) VALUES (?, ?)", (s, now + idx * 0.001))
+        active = seed
+    return active
 
 
 def make_session_token() -> str:
@@ -318,10 +356,43 @@ def logout(request: Request, response: Response):
     return {"ok": True}
 
 
+class AddSymbolRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=30)
+
+
 @app.get("/api/symbols", dependencies=[Depends(require_auth)])
 def symbols():
     with broker.lock:
-        return {"symbols": broker.symbols()}
+        all_syms = broker.symbols()
+    with db() as conn:
+        active_syms = get_active_symbols(conn, all_syms)
+    return {"symbols": active_syms, "all_symbols": all_syms}
+
+
+@app.post("/api/symbols", dependencies=[Depends(require_auth)])
+def add_symbol(body: AddSymbolRequest):
+    raw_sym = body.symbol.strip()
+    with broker.lock:
+        all_syms = broker.symbols()
+    match = next((s for s in all_syms if s.upper() == raw_sym.upper()), None)
+    if not match:
+        raise ValueError(f"Symbol '{body.symbol}' không có trong danh sách hỗ trợ của sàn.")
+    with db() as conn:
+        conn.execute("INSERT OR REPLACE INTO user_symbols (symbol, added_at) VALUES (?, ?)", (match, time.time()))
+        conn.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('watchlist_initialized', '1')")
+        active_syms = get_active_symbols(conn, all_syms)
+    return {"ok": True, "symbols": active_syms, "all_symbols": all_syms}
+
+
+@app.delete("/api/symbols/{symbol}", dependencies=[Depends(require_auth)])
+def remove_symbol(symbol: str):
+    with broker.lock:
+        all_syms = broker.symbols()
+    with db() as conn:
+        conn.execute("DELETE FROM user_symbols WHERE symbol = ? OR UPPER(symbol) = ?", (symbol, symbol.upper()))
+        conn.execute("INSERT OR REPLACE INTO app_config (key, value) VALUES ('watchlist_initialized', '1')")
+        active_syms = get_active_symbols(conn, all_syms)
+    return {"ok": True, "symbols": active_syms, "all_symbols": all_syms}
 
 
 @app.get("/api/context", dependencies=[Depends(require_auth)])
