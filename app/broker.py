@@ -2,6 +2,7 @@ import importlib
 import math
 import os
 import time
+from datetime import datetime
 from threading import RLock
 
 
@@ -128,6 +129,7 @@ class OnlineBroker:
         "GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD",
         "NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD",
         "USDCAD", "USDCHF", "USDJPY",
+        "XAUUSD",
     ]
 
     TF_MAP = {
@@ -157,11 +159,49 @@ class OnlineBroker:
     def symbols(self):
         return sorted(self.SUPPORTED_SYMBOLS)
 
+    def _gold_spec(self):
+        defaults = {"contract_size": 100, "tick_size": 0.01,
+                    "volume_min": 0.01, "volume_step": 0.01, "volume_max": 100}
+        spec = {}
+        for key, default in defaults.items():
+            try:
+                value = float(os.getenv("XAUUSD_" + key.upper(), str(default)))
+            except ValueError as exc:
+                raise ValueError(f"Cấu hình XAUUSD_{key.upper()} phải là số dương.") from exc
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"Cấu hình XAUUSD_{key.upper()} phải là số dương.")
+            spec[key] = value
+        if spec["volume_max"] < spec["volume_min"]:
+            raise ValueError("XAUUSD_VOLUME_MAX phải lớn hơn hoặc bằng XAUUSD_VOLUME_MIN.")
+        from decimal import Decimal
+        spec["digits"] = max(0, -Decimal(str(spec["tick_size"])).normalize().as_tuple().exponent)
+        return spec
+
     def _fetch_quote(self, symbol):
         now = time.time()
         cached = self._cache.get(symbol)
         if cached and now - cached[0] < 5:
             return cached[1], cached[2]
+
+        if symbol == "XAUUSD":
+            try:
+                resp = self._client().get("https://api.gold-api.com/price/XAU")
+                if resp.status_code != 200:
+                    raise BrokerUnavailable(f"Gold API trả về mã lỗi {resp.status_code} cho XAUUSD.")
+                data = resp.json()
+                price = float(data["price"])
+                quote_time = int(datetime.fromisoformat(data["updatedAt"].replace("Z", "+00:00")).timestamp())
+                if data.get("symbol") != "XAU" or data.get("currency") != "USD" or not math.isfinite(price) or price <= 0:
+                    raise BrokerUnavailable("Dữ liệu giá vàng USD từ Gold API không hợp lệ.")
+                max_age = float(os.getenv("MAX_TICK_AGE_SECONDS", "120"))
+                if now - quote_time > max_age or quote_time > now + 60:
+                    raise BrokerUnavailable("Báo giá XAUUSD quá cũ hoặc thời gian không hợp lệ. Hãy thử lại khi có giá mới.")
+                self._cache[symbol] = (now, price, quote_time)
+                return price, quote_time
+            except BrokerUnavailable:
+                raise
+            except Exception as exc:
+                raise BrokerUnavailable(f"Không lấy được giá XAUUSD từ Gold API: {exc}") from exc
 
         ticker = f"{symbol}=X"
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
@@ -194,10 +234,13 @@ class OnlineBroker:
     def context(self, symbol):
         if symbol not in self.SUPPORTED_SYMBOLS:
             raise ValueError(f"Symbol {symbol} không được hỗ trợ trong chế độ trực tuyến.")
+        gold_spec = self._gold_spec() if symbol == "XAUUSD" else None
+        if gold_spec and os.getenv("ACCOUNT_CURRENCY", "USD") != "USD":
+            raise ValueError("XAUUSD online hiện cần ACCOUNT_CURRENCY=USD để tính P/L đúng đơn vị.")
         price, quote_time = self._fetch_quote(symbol)
         jpy = "JPY" in symbol
-        tick_size = 0.001 if jpy else 0.00001
-        digits = 3 if jpy else 5
+        tick_size = gold_spec["tick_size"] if gold_spec else (0.001 if jpy else 0.00001)
+        digits = gold_spec["digits"] if gold_spec else (3 if jpy else 5)
         half_spread = tick_size
         bid = round(price - half_spread, digits)
         ask = round(price + half_spread, digits)
@@ -209,6 +252,8 @@ class OnlineBroker:
             equity = 10000.0
 
         warnings = []
+        if gold_spec:
+            warnings.append(f"XAUUSD: giá tham khảo từ Gold API; Bid/Ask giả định, không phải báo giá sàn. 1 lot = {gold_spec['contract_size']:g} oz; kiểm tra cấu hình hợp đồng/lot theo sàn. SL swing chưa hỗ trợ, dùng SL nhập tay.")
         if currency != "USD":
             warnings.append(f"Tài khoản dùng {currency}. Mọi số tiền theo đơn vị này.")
 
@@ -216,7 +261,7 @@ class OnlineBroker:
             "mode": "online",
             "account": {
                 "login": "ONLINE",
-                "server": "Yahoo Finance (Live Feed)",
+                "server": "Gold API (Spot Gold)" if gold_spec else "Yahoo Finance (Live Feed)",
                 "currency": currency,
                 "equity": equity,
                 "balance": equity,
@@ -231,6 +276,8 @@ class OnlineBroker:
                 "volume_min": 0.01,
                 "volume_step": 0.01,
                 "volume_max": 100.0,
+                **(gold_spec or {}),
+                "swing_supported": not bool(gold_spec),
             },
             "quote_time": quote_time,
             "warnings": warnings,
@@ -248,6 +295,10 @@ class OnlineBroker:
             return fallbacks.get(pair, 1.0)
 
     def profit(self, symbol, side, volume, entry, stop):
+        if symbol == "XAUUSD":
+            if os.getenv("ACCOUNT_CURRENCY", "USD") != "USD":
+                raise ValueError("XAUUSD online hiện cần ACCOUNT_CURRENCY=USD để tính P/L đúng đơn vị.")
+            return (stop - entry) * self._gold_spec()["contract_size"] * volume * (1 if side == "buy" else -1)
         pnl_quote = (stop - entry) * 100000 * volume * (1 if side == "buy" else -1)
         base, quote = symbol[:3], symbol[3:]
         if quote == "USD":
@@ -263,6 +314,8 @@ class OnlineBroker:
         return pnl_quote
 
     def bars(self, symbol, timeframe, count):
+        if symbol == "XAUUSD":
+            raise ValueError("XAUUSD online chưa có nguồn nến vàng spot để lấy swing. Vui lòng nhập SL thủ công.")
         if timeframe not in self.TF_MAP:
             raise ValueError(f"Khung thời gian {timeframe} không hợp lệ.")
         interval, range_str = self.TF_MAP[timeframe]
@@ -302,4 +355,3 @@ class OnlineBroker:
 
     def verify_account(self, account):
         pass
-

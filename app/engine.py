@@ -46,8 +46,8 @@ def calculate(plan: Plan, broker):
     warnings = list(context.get("warnings", []))
     if first != D(plan.entry) or stop != D(plan.stop):
         warnings.append("Entry đầu/SL đã được làm tròn theo bước giá của broker.")
-    # The budget solver assumes linear forex P/L in volume. The broker adapter
-    # only exposes forex calculation modes, and every final leg is recalculated.
+    # The budget solver assumes P/L is linear in volume for supported contracts.
+    # Every final leg is recalculated through the broker adapter.
     base_losses = []
     for entry in entries:
         profit = broker.profit(plan.symbol, plan.side, float(minimum), float(entry), float(stop))

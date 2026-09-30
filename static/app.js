@@ -28,7 +28,8 @@ function stopControls() {
   const s = context?.symbol;
   const ready = s && s.name === $('symbol').value;
   $('sl-up').disabled = $('sl-down').disabled = stopBusy || !ready;
-  $('get-swing').disabled = stopBusy;
+  $('get-swing').disabled = stopBusy || s?.swing_supported === false;
+  $('get-swing').title = s?.swing_supported === false ? 'XAUUSD online chưa có nến vàng spot. Nhập SL thủ công.' : '';
   if (ready) {
     const ticks = Number($('step-ticks').value);
     $('step-hint').textContent = `1 tick ${s.name} = ${s.tick_size.toFixed(s.digits)} · Mỗi lần ▲/▼: ${(s.tick_size*ticks).toFixed(s.digits)} (${ticks} ticks)`;
@@ -200,6 +201,7 @@ async function loadContext() {
   if (version !== contextVersion) return false;
   context = next;
   const a = context.account, s = context.symbol;
+  if (s.swing_supported === false) { swingEnabled = false; queuedSwing = false; }
   $('account').textContent = `${fmt(a.equity)} ${a.currency}`;
   $('account-meta').textContent = context.mode === 'online' ? `${a.server}` : `${a.server} · #${a.login}`;
   $('connection').textContent = context.mode === 'demo' ? '● MÔ PHỎNG' : (context.mode === 'online' ? '● TRỰC TUYẾN (LIVE)' : '● MT5 đã kết nối');
@@ -221,7 +223,7 @@ async function initialize() {
     allSymbols = response.all_symbols || response.symbols;
     activeSymbols = response.symbols || [];
     updateSymbolSelect(activeSymbols.includes('EURUSD') ? 'EURUSD' : (activeSymbols[0] || ''));
-    if (!allSymbols.length) throw new Error('Broker không có symbol Forex được hỗ trợ.');
+    if (!allSymbols.length) throw new Error('Broker không có symbol được hỗ trợ.');
     if (activeSymbols.length > 0) {
       await loadContext();
       if (session.mode === 'demo') await compute();
@@ -386,7 +388,7 @@ $('symbol').onchange = async () => {
   try {
     if (await loadContext()) {
       $('entry').value = (form.elements.side.value === 'buy' ? context.symbol.ask : context.symbol.bid).toFixed(context.symbol.digits);
-      if (auto) await changeStop('swing');
+      if (auto && context.symbol.swing_supported !== false) await changeStop('swing');
     }
   } catch(error) { context=null; stopControls(); message(error.message); }
 };

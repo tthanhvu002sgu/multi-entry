@@ -73,6 +73,8 @@ ACCOUNT_CURRENCY=USD
 ```
 
 - **Giá & Nến swing**: Lấy trực tiếp từ Yahoo Finance API (thông qua `httpx`), hỗ trợ đầy đủ 28 cặp Forex chính và chéo (EURUSD, USDJPY, GBPUSD, EURGBP, v.v.).
+- **XAUUSD online**: thêm qua **Quản lý ticker**, lấy giá vàng spot USD từ [Gold API](https://gold-api.com/docs), không dùng giá futures thay vàng spot. Giá quá cũ bị từ chối theo `MAX_TICK_AGE_SECONDS`. Bid/Ask là giả định, không phải giá thực thi của sàn. Nguồn miễn phí không có nến lịch sử dùng trong ứng dụng: nhập SL thủ công, nút swing tắt với XAUUSD.
+- **Hợp đồng vàng online**: mặc định 1 lot = 100 oz, bước giá 0.01, min/step lot 0.01, max lot 100. Chỉnh `XAUUSD_CONTRACT_SIZE`, `XAUUSD_TICK_SIZE`, `XAUUSD_VOLUME_MIN`, `XAUUSD_VOLUME_STEP`, `XAUUSD_VOLUME_MAX` trong `.env` theo sàn; đây là thông số tham khảo, không tự lấy từ broker. P/L = chênh lệch giá × contract size × lot (đảo dấu với Sell). XAUUSD online hiện yêu cầu `ACCOUNT_CURRENCY=USD`.
 - **Nến swing**: Lấy 300 nến đã đóng gần nhất cho các timeframe `M1`, `M5`, `M15`, `M30`, `H1`, `H4`, `D1` để xác định pivot 2–2.
 - **Tính toán P/L & Lot**: Tự động tính toán P/L chuẩn Forex theo công thức toán học (hỗ trợ trực tiếp các cặp Direct, Indirect và Cross rate quy đổi về USD).
 - Không yêu cầu cài đặt phần mềm MT5 hay các biến `MT5_PATH`, `MT5_LOGIN`, `MT5_SERVER`.
@@ -140,6 +142,8 @@ Trước khi vận hành thật: đối chiếu P/L từng entry với `order_ca
 - https://www.mql5.com/en/docs/python_metatrader5/mt5initialize_py
 
 ## Nhật ký
+
+- 2026-09-30: thêm XAUUSD online vào watchlist; giá vàng spot từ Gold API, cấu hình hợp đồng vàng riêng, tính Buy/Sell và lot theo ngân sách; từ chối giá cũ/cấu hình sai, báo rõ giới hạn SL swing. SP500/BTCUSD chưa được bổ sung.
 
 - 2026-09-25: thêm tính năng tự động tính toán lại kế hoạch (auto-calculate / live update):
   - Tự động tính toán lại kế hoạch DCA ngay khi người dùng thay đổi giá entry đầu, giá stop loss, lot mỗi entry, ngân sách chịu lỗ, tổng số entry (+/-), commission hoặc dự phòng mà không cần phải bấm nút "Tính kế hoạch →".
