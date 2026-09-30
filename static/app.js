@@ -29,7 +29,7 @@ function stopControls() {
   const ready = s && s.name === $('symbol').value;
   $('sl-up').disabled = $('sl-down').disabled = stopBusy || !ready;
   $('get-swing').disabled = stopBusy || s?.swing_supported === false;
-  $('get-swing').title = s?.swing_supported === false ? 'XAUUSD online chưa có nến vàng spot. Nhập SL thủ công.' : '';
+  $('get-swing').title = s?.swing_supported === false ? 'Nguồn dữ liệu này chưa hỗ trợ nến swing. Nhập SL thủ công.' : '';
   if (ready) {
     const ticks = Number($('step-ticks').value);
     $('step-hint').textContent = `1 tick ${s.name} = ${s.tick_size.toFixed(s.digits)} · Mỗi lần ▲/▼: ${(s.tick_size*ticks).toFixed(s.digits)} (${ticks} ticks)`;

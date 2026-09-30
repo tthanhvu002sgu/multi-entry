@@ -32,7 +32,7 @@ def test_gold_risk_and_contract(gold, side, stop):
     assert result['total_loss'] == 50
     assert result['context']['symbol']['contract_size'] == 100
     assert result['context']['symbol']['tick_size'] == .01
-    assert not result['context']['symbol']['swing_supported']
+    assert result['context']['symbol']['swing_supported']
     assert result['context']['account']['server'] == 'Gold API (Spot Gold)'
     assert broker.profit('XAUUSD', side, .01, 3000, stop) == -10
 
@@ -65,10 +65,8 @@ def test_gold_invalid_feed(gold, mutation):
         broker.context('XAUUSD')
 
 
-def test_gold_non_usd_and_swing_rejected(gold, monkeypatch):
+def test_gold_non_usd_rejected(gold, monkeypatch):
     broker, _ = gold
-    with pytest.raises(ValueError, match='SL thủ công'):
-        broker.bars('XAUUSD', 'M15', 300)
     monkeypatch.setenv('ACCOUNT_CURRENCY', 'EUR')
     with pytest.raises(ValueError, match='ACCOUNT_CURRENCY=USD'):
         broker.context('XAUUSD')

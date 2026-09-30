@@ -145,6 +145,7 @@ class OnlineBroker:
     def __init__(self):
         self.lock = RLock()
         self._cache = {}
+        self._gold_bars_cache = {}
         self._http = None
 
     def _client(self):
@@ -253,7 +254,7 @@ class OnlineBroker:
 
         warnings = []
         if gold_spec:
-            warnings.append(f"XAUUSD: giá tham khảo từ Gold API; Bid/Ask giả định, không phải báo giá sàn. 1 lot = {gold_spec['contract_size']:g} oz; kiểm tra cấu hình hợp đồng/lot theo sàn. SL swing chưa hỗ trợ, dùng SL nhập tay.")
+            warnings.append(f"XAUUSD: giá tham khảo từ Gold API, nến swing BID từ Dukascopy (UTC); có thể lệch chart sàn. Bid/Ask giả định, không phải báo giá sàn. 1 lot = {gold_spec['contract_size']:g} oz; kiểm tra cấu hình hợp đồng/lot theo sàn.")
         if currency != "USD":
             warnings.append(f"Tài khoản dùng {currency}. Mọi số tiền theo đơn vị này.")
 
@@ -277,7 +278,7 @@ class OnlineBroker:
                 "volume_step": 0.01,
                 "volume_max": 100.0,
                 **(gold_spec or {}),
-                "swing_supported": not bool(gold_spec),
+                "swing_supported": True,
             },
             "quote_time": quote_time,
             "warnings": warnings,
@@ -315,7 +316,8 @@ class OnlineBroker:
 
     def bars(self, symbol, timeframe, count):
         if symbol == "XAUUSD":
-            raise ValueError("XAUUSD online chưa có nguồn nến vàng spot để lấy swing. Vui lòng nhập SL thủ công.")
+            from .gold_history import gold_bars
+            return gold_bars(self._client(), self._gold_bars_cache, timeframe, count)
         if timeframe not in self.TF_MAP:
             raise ValueError(f"Khung thời gian {timeframe} không hợp lệ.")
         interval, range_str = self.TF_MAP[timeframe]
